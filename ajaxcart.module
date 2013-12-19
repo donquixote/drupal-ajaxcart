@@ -134,4 +134,7 @@ function _ajaxcart_add_shipping_line_item($form, $form_state) {
 
   // Save and add the line item to the order.
   $success = commerce_shipping_add_shipping_line_item($line_item, $order, TRUE);
+  if ($success) {
+    commerce_order_save($order);
+  }
 }
