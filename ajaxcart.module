@@ -8,7 +8,7 @@ function ajaxcart_form_commerce_checkout_form_checkout_alter(&$form) {
   if (isset($form['cart_contents']['cart_contents_view'])) {
 
     // Make the cart ajax-updateable
-    $form['cart_contents']['#prefix'] = '<div id="teak-checkout-cart-ajax-wrapper">';
+    $form['cart_contents']['#prefix'] = '<div id="ajaxcart-cart-ajax-wrapper">';
     $form['cart_contents']['#suffix'] = '</div>';
 
     // Update the cart (and service details), when a different shipping method
@@ -64,16 +64,17 @@ function _ajaxcart_ajax_cart_refresh_commands($form, $form_state) {
     return array();
   }
 
+  // Create the shipping line item.
   _ajaxcart_add_shipping_line_item($form, $form_state);
 
-  $form['cart_contents']['cart_contents_view']['#markup'] = commerce_embed_view(
-    'teak_cart_summary',
-    'default',
-    array($form_state['order']->order_id)
-  );
+  // Extract the View and display keys from the cart contents pane setting.
+  list($view_id, $display_id) = explode('|', variable_get('commerce_cart_contents_pane_view', 'commerce_cart_summary|default'));
+
+  $arguments = array($form_state['order']->order_id);
+  $form['cart_contents']['cart_contents_view']['#markup'] = commerce_embed_view($view_id, $display_id, $arguments);
 
   $commands[] = ajax_command_replace(
-    '#teak-checkout-cart-ajax-wrapper',
+    '#ajaxcart-cart-ajax-wrapper',
     drupal_render($form['cart_contents'])
   );
   return $commands;
