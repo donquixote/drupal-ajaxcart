@@ -1,0 +1,136 @@
+<?php
+
+/**
+ * Implements hook_form_FORM_ID_alter()
+ */
+function ajaxcart_form_commerce_checkout_form_checkout_alter(&$form) {
+
+  if (isset($form['cart_contents']['cart_contents_view'])) {
+
+    // Make the cart ajax-updateable
+    $form['cart_contents']['#prefix'] = '<div id="teak-checkout-cart-ajax-wrapper">';
+    $form['cart_contents']['#suffix'] = '</div>';
+
+    // Update the cart (and service details), when a different shipping method
+    // is selected.
+    if (isset($form['commerce_shipping']['shipping_service'])) {
+      $form['commerce_shipping']['shipping_service']['#ajax'] = array(
+        'callback' => '_ajaxcart_shipping_service_has_changed',
+      );
+    }
+  }
+}
+
+/**
+ * Implements hook_commerce_customer_profile_copy_refresh_alter()
+ *
+ * @param array &$commands
+ * @param array $form
+ * @param array $form_state
+ */
+function ajaxcart_commerce_customer_profile_copy_refresh_alter(&$commands, $form, $form_state) {
+  // Update the cart, when the shipping address has changed.
+  $commands += _ajaxcart_ajax_cart_refresh_commands($form, $form_state);
+}
+
+/**
+ * Update the cart and the service details, when a different shipping method is
+ * selected.
+ *
+ * @param array $form
+ * @param array $form_state
+ * @return array
+ */
+function _ajaxcart_shipping_service_has_changed($form, $form_state) {
+  $commands = _ajaxcart_ajax_cart_refresh_commands($form, $form_state);
+  $commands[] = ajax_command_replace(
+    '#commerce-shipping-service-details',
+    drupal_render($form['commerce_shipping']['service_details'])
+  );
+  return array(
+    '#type' => 'ajax',
+    '#commands' => $commands,
+  );
+}
+
+/**
+ * @param array $form
+ * @param array $form_state
+ * @return array
+ */
+function _ajaxcart_ajax_cart_refresh_commands($form, $form_state) {
+
+  if (!isset($form['cart_contents']['cart_contents_view'])) {
+    return array();
+  }
+
+  _ajaxcart_add_shipping_line_item($form, $form_state);
+
+  $form['cart_contents']['cart_contents_view']['#markup'] = commerce_embed_view(
+    'teak_cart_summary',
+    'default',
+    array($form_state['order']->order_id)
+  );
+
+  $commands[] = ajax_command_replace(
+    '#teak-checkout-cart-ajax-wrapper',
+    drupal_render($form['cart_contents'])
+  );
+  return $commands;
+}
+
+/**
+ * Copied from commerce_shipping_pane_checkout_form_submit()
+ *
+ * @param array $form
+ * @param array $form_state
+ */
+function _ajaxcart_add_shipping_line_item($form, $form_state) {
+
+  $pane_id = 'commerce_shipping';
+  $order = $form_state['order'];
+
+  // Only attempt validation if we actually had payment methods on the form.
+  if (empty($form[$pane_id]) || empty($form_state['values'][$pane_id])) {
+    return;
+  }
+
+  $pane_form = $form[$pane_id];
+  $pane_values = $form_state['values'][$pane_id];
+
+  // Initialize the extra details if necessary.
+  if (empty($pane_values['service_details'])) {
+    $pane_values['service_details'] = array();
+  }
+
+  // Only submit if there were shipping services available.
+  if (empty($pane_values['shipping_rates']) || empty($pane_values['shipping_service'])) {
+    return;
+  }
+
+  $shipping_service = commerce_shipping_service_load($pane_values['shipping_service']);
+
+  // Delete any existing shipping line items from the order.
+  commerce_shipping_delete_shipping_line_items($order, TRUE);
+
+  // Extract the unit price from the calculated rate.
+  $rate_line_item = $pane_values['shipping_rates'][$pane_values['shipping_service']];
+  $rate_line_item_wrapper = entity_metadata_wrapper('commerce_line_item', $rate_line_item);
+  $unit_price = $rate_line_item_wrapper->commerce_unit_price->value();
+
+  // Create a new shipping line item with the calculated rate from the form.
+  $line_item = commerce_shipping_line_item_new($pane_values['shipping_service'], $unit_price, $order->order_id, $rate_line_item->data, $rate_line_item->type);
+
+  // Add the service details to the line item's data array and the order.
+  $line_item->data['service_details'] = $pane_values['service_details'];
+
+  // Allow the details form submit handler to make any necessary updates to
+  // the line item before adding it to the order.
+  /** @var callback $callback */
+  if ($callback = commerce_shipping_service_callback($shipping_service, 'details_form_submit')) {
+    $callback($pane_form['service_details'], $pane_values['service_details'], $line_item);
+  }
+
+  // Save and add the line item to the order.
+  $success = commerce_shipping_add_shipping_line_item($line_item, $order, TRUE);
+}

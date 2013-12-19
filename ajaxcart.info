@@ -1,0 +1,6 @@
+name = Commerce AJAX cart
+description = Ajax update for cart summary to show shipping cost
+core = 7.x
+
+dependencies[] = commerce_checkout
+dependencies[] = commerce_shipping
