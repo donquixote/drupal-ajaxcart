@@ -7,10 +7,6 @@ function ajaxcart_form_commerce_checkout_form_checkout_alter(&$form) {
 
   if (isset($form['cart_contents']['cart_contents_view'])) {
 
-    // Make the cart ajax-updateable
-    $form['cart_contents']['#prefix'] = '<div id="ajaxcart-cart-ajax-wrapper">';
-    $form['cart_contents']['#suffix'] = '</div>';
-
     // Update the cart (and service details), when a different shipping method
     // is selected.
     if (isset($form['commerce_shipping']['shipping_service'])) {
@@ -74,7 +70,7 @@ function _ajaxcart_ajax_cart_refresh_commands($form, $form_state) {
   $form['cart_contents']['cart_contents_view']['#markup'] = commerce_embed_view($view_id, $display_id, $arguments);
 
   $commands[] = ajax_command_replace(
-    '#ajaxcart-cart-ajax-wrapper',
+    'fieldset.cart_contents',
     drupal_render($form['cart_contents'])
   );
   return $commands;
@@ -110,6 +106,8 @@ function _ajaxcart_add_shipping_line_item($form, $form_state) {
   }
 
   $shipping_service = commerce_shipping_service_load($pane_values['shipping_service']);
+
+  $order = commerce_order_load($order->order_number);
 
   // Delete any existing shipping line items from the order.
   commerce_shipping_delete_shipping_line_items($order, TRUE);
